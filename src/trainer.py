@@ -116,7 +116,7 @@ def train_RNN(model, dataloader, validationloader, optimizer, loss_fxn, config, 
                 if val_inputs.ndimension() == 2:
                     val_inputs = val_inputs.unsqueeze(-1)
 
-                _, val_outputs = model(val_inputs, hidden, noise=True)
+                _, val_outputs = model(val_inputs, hidden, noise=False)  # trying noiseless validation loss
 
                 if val_targets.ndimension() == 2:
                     val_targets = val_targets.unsqueeze(-1)

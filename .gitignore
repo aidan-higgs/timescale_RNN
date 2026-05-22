@@ -8,5 +8,4 @@ swarm*
 rnn_results*/
 configs/
 logs/
-test.ipynb
-test.txt
+test*

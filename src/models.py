@@ -258,9 +258,10 @@ class expirimental_RNN_sigmainit(nn.Module):
             self.ih.weight.copy_(torch.tensor(sigma*np.random.normal(loc=0, scale=1, size=(hidden_size, input_size))/np.sqrt(hidden_size)))
             self.ho.weight.copy_(torch.tensor(sigma*np.random.normal(loc=0, scale=1, size=(output_size, hidden_size))/np.sqrt(hidden_size)))
 
-    def forward(self, inputs, hidden, noise=True):
+    def forward(self, inputs, hidden, noise=True, returnstates=False):
         # inputs: (B, T, input_size)
         outputs = []
+        hidden_states = []          # NEW
         B, T, _ = inputs.shape
 
         inv_tau = (1.0 / self.taus).view(1, -1)  # (1, H) for broadcasting
@@ -276,10 +277,9 @@ class expirimental_RNN_sigmainit(nn.Module):
                 re_noise = torch.zeros_like(hidden)
 
             r = self.activation(hidden)
-            #print(f"Hidden shape: {hidden.shape}, Tau shape: {self.taus.shape}, Input shape: {input_t.shape}")
-            dh_decay = -hidden 
+            dh_decay = -hidden
             dh_recur = self.hh(r) + re_noise
-            dh_input = self.ih(input_t) 
+            dh_input = self.ih(input_t)
 
             if self.tau_effect == "decay":
                 dh = inv_tau * dh_decay + dh_recur + dh_input
@@ -295,11 +295,82 @@ class expirimental_RNN_sigmainit(nn.Module):
                 dh = inv_tau * dh_decay + dh_recur + dh_input
 
             hidden = hidden + self.dt * dh
+            hidden_states.append(hidden.unsqueeze(1))   # NEW: (B, 1, H)
             output = self.ho(self.activation(hidden))
             outputs.append(output.unsqueeze(1))
-            #print (f"taus: {self.taus}, dt: {self.dt}, dh: {dh}")
 
-        return hidden, torch.cat(outputs, dim=1)  # (B, T, output_size)
+        if returnstates:
+            return hidden, torch.cat(outputs, dim=1), torch.cat(hidden_states, dim=1)
+            #      (B, H)   (B, T, output_size)        (B, T, H)
+        else:
+            return hidden, torch.cat(outputs, dim=1)  # (B, T, output_size)
+
+    def init_hidden(self, batch_size, device=None):
+        return torch.zeros(batch_size, self.hidden_size, device=device)
+
+
+class expirimental_RNN_temp(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, dt, tau_array, activation, tau_effect, bias=True, sigma_in=0.01, sigma_re=0.01):
+        super(expirimental_RNN_temp, self).__init__()
+        self.hidden_size = hidden_size
+        self.dt = dt
+        self.sigma_in = sigma_in
+        self.sigma_re = sigma_re
+        self.tau_effect = tau_effect
+
+        # per-unit time constants (buffer so it moves with .to(device) but isn't trained)
+        self.register_buffer("taus", torch.as_tensor(tau_array, dtype=torch.float32))
+
+        activations = {'relu': F.relu, 'tanh': F.tanh}
+        self.activation = activations.get(activation.lower(), F.tanh)
+
+        self.ih = nn.Linear(input_size, hidden_size, bias=False)
+        self.hh = nn.Linear(hidden_size, hidden_size, bias=bias)
+        self.ho = nn.Linear(hidden_size, output_size, bias=bias)
+
+    def forward(self, inputs, hidden, noise=True):
+        # inputs: (B, T, input_size)
+        outputs = []
+        hidden_states = []          # NEW
+        B, T, _ = inputs.shape
+
+        inv_tau = (1.0 / self.taus).view(1, -1)  # (1, H) for broadcasting
+
+        for t in range(T):
+            input_t = inputs[:, t, :]  # (B, input_size)
+
+            if noise:
+                input_noise = self.sigma_in * torch.randn_like(input_t)
+                re_noise = self.sigma_re * torch.randn_like(hidden)
+                input_t = input_t * (1 + input_noise)
+            else:
+                re_noise = torch.zeros_like(hidden)
+
+            r = self.activation(hidden)
+            dh_decay = -hidden
+            dh_recur = self.hh(r) + re_noise
+            dh_input = self.ih(input_t)
+
+            if self.tau_effect == "decay":
+                dh = inv_tau * dh_decay + dh_recur + dh_input
+            elif self.tau_effect == "recur":
+                dh = inv_tau * dh_recur + dh_decay + dh_input
+            elif self.tau_effect == "input":
+                dh = inv_tau * dh_input + dh_decay + dh_recur
+            elif self.tau_effect == "all":
+                dh = inv_tau * (dh_decay + dh_recur + dh_input)
+            elif self.tau_effect == "recur_decay":
+                dh = inv_tau * (dh_decay + dh_recur) + dh_input
+            else:
+                dh = inv_tau * dh_decay + dh_recur + dh_input
+
+            hidden = hidden + self.dt * dh
+            hidden_states.append(hidden.unsqueeze(1))   # NEW: (B, 1, H)
+            output = self.ho(self.activation(hidden))
+            outputs.append(output.unsqueeze(1))
+
+        return hidden, torch.cat(outputs, dim=1), torch.cat(hidden_states, dim=1)
+        #      (B, H)   (B, T, output_size)        (B, T, H)
 
     def init_hidden(self, batch_size, device=None):
         return torch.zeros(batch_size, self.hidden_size, device=device)

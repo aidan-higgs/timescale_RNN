@@ -10,7 +10,7 @@ source /home/higgsab/bin/myconda
 conda activate rnn
  
 OFFSET=0
-DIR="aidan_sigma"
+DIR="noiseless_sigma"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -53,8 +53,8 @@ mv logs/tmp_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.err logs/${DIR}/${NAME}
 echo "Config: $CONFIG | Seed: $SEED | Name: $NAME"
 python -u run_expt.py --config=$CONFIG --seed=$SEED --name=$NAME --output_dir=$DIR
 
-# sbatch submit_expts_aidan.sh --offset 0 --dir aidan_sigma
-# sbatch submit_expts_aidan.sh --offset 1000 --dir aidan_sigma
-# sbatch submit_expts_aidan.sh --offset 2000 --dir aidan_sigma
-# sbatch --array=0-839 submit_expts_aidan.sh --offset 3000 --aidan_sigma
+# sbatch submit_expts_aidan.sh --offset 0 --dir noiseless_sigma
+# sbatch submit_expts_aidan.sh --offset 1000 --dir noiseless_sigma
+# sbatch submit_expts_aidan.sh --offset 2000 --dir noiseless_sigma
+# sbatch --array=0-839 submit_expts_aidan.sh --offset 3000 --dir noiseless_sigma
 # i.e. for 3840 total jobs
